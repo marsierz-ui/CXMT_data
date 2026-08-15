@@ -1,0 +1,10 @@
+# keep the data archive, ignore everything else noisy
+out/.coin_cache.json
+out/*.tmp
+out/perp_*.csv
+out/merged*.csv
+out/comparison.png
+__pycache__/
+*.pyc
+.venv/
+.env

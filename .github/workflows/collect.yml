@@ -1,0 +1,47 @@
+name: collect-cxmt
+
+# Polls Hyperliquid for new CXMT candles and commits the growing master CSVs.
+# GitHub cron is best-effort (can be delayed/skipped under load and won't run
+# more often than every 5 min), but the endpoint serves ~3.5 days back at 1m,
+# so even a few hours of delay loses nothing. Each run commits, which keeps the
+# repo "active" so the 60-day-inactivity auto-disable never triggers.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"   # every 15 minutes (UTC)
+  workflow_dispatch:          # allow manual runs from the Actions tab
+
+permissions:
+  contents: write             # needed to commit the CSVs back
+
+concurrency:
+  group: collect-cxmt
+  cancel-in-progress: false   # let an in-flight commit finish
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install pandas
+
+      - name: Fetch new candles
+        run: python cxmt_collector.py --coins xyz:CXMT --intervals 1m,5m,15m,30m,1h,1d
+
+      - name: Commit updated data
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add out/*_master.csv
+          if git diff --cached --quiet; then
+            echo "no new candles"
+          else
+            git commit -m "data: CXMT candles $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
+          fi
