@@ -45,3 +45,33 @@ jobs:
             git commit -m "data: CXMT candles $(date -u +%Y-%m-%dT%H:%MZ)"
             git push
           fi
+
+      # The `secrets` context is not readable from a step's `if:`, only from
+      # `run:` and `env:`. So presence is tested here and carried out as an
+      # ordinary step output: the mirror turns itself on the moment the three
+      # secrets exist, and stays quiet until then, with no workflow edit either
+      # way.
+      - name: Check for Dropbox credentials
+        id: dbx
+        env:
+          KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          REFRESH: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+        run: |
+          if [ -n "$KEY" ] && [ -n "$SECRET" ] && [ -n "$REFRESH" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Dropbox secrets are not set, skipping the mirror. Run dropbox_auth.py --gh-secrets to enable it."
+          fi
+
+      # Uploads are content-hash gated, so a run with nothing new transfers
+      # nothing and costs one metadata call per file.
+      - name: Mirror to Dropbox
+        if: steps.dbx.outputs.ready == 'true'
+        env:
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
+          DEST: ${{ vars.DROPBOX_DEST || '/CXMT_data' }}
+        run: python dropbox_sync.py --dest "$DEST"

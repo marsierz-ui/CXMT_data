@@ -78,3 +78,28 @@ has not listed - there is no Nasdaq/Yahoo ticker and no LSEG RIC to pull, so
 the perp is the whole dataset. If the company lists (its filings target the
 Shanghai STAR Market), add a stock collector then; `CBRS_import.py` in
 CBRS_data is the template.
+
+## Dropbox mirror
+
+[`dropbox_sync.py`](dropbox_sync.py) mirrors the collected data to Dropbox as the last step of every `collect.yml` run,
+so the archive also exists outside git. GitHub measures a repository by its
+whole history, so a file rewritten on every poll stores a fresh blob each time;
+Dropbox charges for a file once however often it is overwritten.
+
+```bash
+python dropbox_sync.py --dry-run          # what would upload
+python dropbox_sync.py --dest /CXMT_data
+```
+
+Unchanged files are skipped - Dropbox publishes a `content_hash` per file,
+which the script recomputes locally (sha256 over the concatenated sha256 of
+4 MiB blocks) and compares first - so a run with nothing new transfers nothing.
+
+Authorization is a one-time step: run [`dropbox_auth.py`](dropbox_auth.py)
+`--gh-secrets`, which takes an app key and secret, walks the OAuth code
+exchange, and stores `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET` and
+`DROPBOX_REFRESH_TOKEN` as Actions secrets. The workflow tests for those three
+on each run and mirrors as soon as they exist, so there is nothing else to
+switch on. Use an **App folder** app: its paths are sandboxed under
+`/Apps/<AppName>/`, which both keeps it away from the rest of the Dropbox and
+sidesteps a team account's unwritable root.
