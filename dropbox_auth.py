@@ -156,14 +156,23 @@ def write_env(key, secret, token):
     print(f"[env] wrote {ENV_FILE.resolve()} (gitignored)")
 
 
-def set_gh_secrets(values):
-    """Push the three secrets to the repo. Values go in on stdin, never argv."""
-    for name in SECRET_NAMES:
-        r = subprocess.run(["gh", "secret", "set", name],
-                           input=values[name], capture_output=True, text=True)
-        if r.returncode != 0:
-            sys.exit(f"[gh] setting {name} failed:\n{r.stderr.strip()}")
-        print(f"[gh] secret {name} set")
+def set_gh_secrets(values, repos):
+    """Store the three secrets. Values go in on stdin, never argv.
+
+    With no --repos this targets whatever repository the working directory
+    is in, which is the normal case. Naming repositories fans the same
+    token out to the sibling archives, which share one Dropbox app.
+    """
+    for repo in repos or [None]:
+        where = ["--repo", repo] if repo else []
+        for name in SECRET_NAMES:
+            r = subprocess.run(["gh", "secret", "set", name, *where],
+                               input=values[name], capture_output=True,
+                               text=True)
+            if r.returncode != 0:
+                sys.exit(f"[gh] setting {name} on {repo or 'this repo'} "
+                         f"failed:\n{r.stderr.strip()}")
+            print(f"[gh] secret {name} set on {repo or 'this repo'}")
 
 
 def main():
@@ -173,6 +182,9 @@ def main():
                     help="skip authorization; test the refresh token already set")
     ap.add_argument("--gh-secrets", action="store_true",
                     help="also store the three values as GitHub Actions secrets")
+    ap.add_argument("--repos", nargs="*", default=[], metavar="OWNER/NAME",
+                    help="with --gh-secrets, set them on these repositories "
+                         "instead of the current one")
     ap.add_argument("--no-browser", action="store_true",
                     help="print the URL without opening a browser")
     ap.add_argument("--show", action="store_true",
@@ -193,6 +205,10 @@ def main():
 
     if args.check:
         print("[check] the refresh token works")
+        if args.gh_secrets:
+            set_gh_secrets({"DROPBOX_APP_KEY": key,
+                            "DROPBOX_APP_SECRET": secret,
+                            "DROPBOX_REFRESH_TOKEN": token}, args.repos)
         return
 
     write_env(key, secret, token)
@@ -200,7 +216,8 @@ def main():
         print(f"[auth] refresh token: {token}")
     if args.gh_secrets:
         set_gh_secrets({"DROPBOX_APP_KEY": key, "DROPBOX_APP_SECRET": secret,
-                        "DROPBOX_REFRESH_TOKEN": token})
+                        "DROPBOX_REFRESH_TOKEN": token},
+                       args.repos)
         print("\nThe Actions mirror step turns itself on once these "
               "exist; an App-folder app needs no destination set, and "
               "uploads land in /Apps/<app name>/ANT_data. Watch the "
